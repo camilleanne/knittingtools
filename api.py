@@ -1,7 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Response, Form
+from fastapi import FastAPI, HTTPException, File, UploadFile, Response, Form
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
-import logging.config
 import os
 import cairosvg
 from time import time

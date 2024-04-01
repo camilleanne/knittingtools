@@ -22,7 +22,6 @@ import svgwrite
 import json
 import os
 from loguru import logger
-from snoop import snoop
 
 machine_config = None
 from typing import cast
