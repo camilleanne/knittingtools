@@ -1,4 +1,4 @@
-'''
+"""
 All rights reserved (c) 2016-2018 Brenda A. Bell.
 
 This file is part of the PCGenerator (see
@@ -16,7 +16,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
-'''
+"""
 
 import cairosvg
 import cgi
@@ -28,245 +28,257 @@ import traceback
 from modules.pcgenerator import PCGenerator
 from modules.pcgenerator import calibrate
 
+ERR_H1 = "<h1>Aw, snap! We seem to have a problem.</h1><p><b>"
+ERR_MESSAGE = """</b><p>Please report this error via private message to
+<a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>.
+It will be helpful if you include the pattern you uploaded to help me
+diagnose the issue.
+"""
+
+
 def pcgenerator_head(handler, logger):
+    try:
+        handler.send_response(200)
+        handler.send_header("Content-type", "text/html")
+        handler.end_headers()
+        return
 
-        try:
-		handler.send_response(200)
-		handler.send_header('Content-type', 'text/html')
-		handler.end_headers()
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        handler.log_error(
+            "%s", traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
 
-                return
+        handler.wfile.write(ERR_H1)
+        handler.wfile.write(
+            repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        )
+        handler.wfile.write(ERR_MESSAGE)
 
-	except Exception:
-		exc_type, exc_value, exc_traceback = sys.exc_info()
-		handler.log_error("%s", traceback.format_exception(exc_type, exc_value,exc_traceback))
-
-		handler.wfile.write(
-			"<h1>Aw, snap! We seem to have a problem.</h1><p><b>")
-		handler.wfile.write(
-			repr(traceback.format_exception(exc_type, exc_value,exc_traceback)))
-		handler.wfile.write(
-			"</b><p>Please report this error via private message to "
-			"<a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>. "
-			"It will be helpful if you include the pattern you uploaded to help me "
-			"diagnose the issue.")
 
 def pcgenerator_get(handler, logger):
+    f = open(
+        "{}/../templates/{}".format(
+            os.path.dirname(os.path.realpath(__file__)), "pcgenerator.html"
+        )
+    )
 
-	f = open("{}/../templates/{}".format(
-		os.path.dirname(os.path.realpath(__file__)),
-		"pcgenerator.html"))
+    try:
+        handler.send_response(200)
+        handler.send_header("Content-type", "text/html")
+        handler.end_headers()
+        handler.wfile.write(f.read())
 
-	try:
-		handler.send_response(200)
-		handler.send_header('Content-type', 'text/html')
-		handler.end_headers()
-		handler.wfile.write(f.read())
+        return
 
-		return
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        handler.log_error(
+            "%s", traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
 
-	except Exception:
-		exc_type, exc_value, exc_traceback = sys.exc_info()
-		handler.log_error("%s", traceback.format_exception(exc_type, exc_value,exc_traceback))
+        handler.wfile.write(ERR_H1)
+        handler.wfile.write(
+            repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        )
+        handler.wfile.write(ERR_MESSAGE)
 
-		handler.wfile.write(
-			"<h1>Aw, snap! We seem to have a problem.</h1><p><b>")
-		handler.wfile.write(
-			repr(traceback.format_exception(exc_type, exc_value,exc_traceback)))
-		handler.wfile.write(
-			"</b><p>Please report this error via private message to "
-			"<a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>. "
-			"It will be helpful if you include the pattern you uploaded to help me "
-			"diagnose the issue.")
+    finally:
+        f.close()
 
-	finally:
-		f.close()
 
 def pcgenerator_post(handler, logger):
+    try:
+        ctype, pdict = cgi.parse_header(handler.headers.getheader("Content-Type"))
+        if ctype == "multipart/form-data":
+            query = cgi.parse_multipart(handler.rfile, pdict)
 
-	try:
-		ctype, pdict = cgi.parse_header(handler.headers.getheader('Content-Type'))
-		if ctype == 'multipart/form-data':
-			query=cgi.parse_multipart(handler.rfile, pdict)
+        calibrate_only = query.get("test", [""])[0] == "test"
+        is_blank = query.get("blank", [""])[0] == "blank"
+        is_solid_fill = query.get("fill", [""])[0] == "fill"
 
-		calibrate_only = query.get('test', [''])[0] == 'test'
-		is_blank = query.get('blank', [''])[0] == 'blank'
-		is_solid_fill = query.get('fill', [''])[0] == 'fill'
+        result = None
+        filename_template = None
+        convert_to_png = False
 
-		result = None
-		filename_template = None
-		convert_to_png = False
+        if calibrate_only:
+            result = calibrate()
+            filename_template = 'attachment; filename="calibrate-{}.{}"'
+        else:
+            upfilecontent = ["x"]
+            if not is_blank:
+                upfilecontent = query.get("upfile")
+                if len(upfilecontent[0]) > 4000:
+                    handler.send_response(302)
+                    handler.send_header("Content-type", "text/html")
+                    handler.end_headers()
+                    handler.wfile.write("Sorry. Your file cannot exceed 2500 bytes!")
+                    return
+            machine_type = query.get("machine")
+            vert_repeat = query.get("vert")
+            convert_to_png = query.get("png", [""])[0] == "png"
 
-		if calibrate_only:
-			result = calibrate()
-			filename_template = 'attachment; filename="calibrate-{}.{}"'
-		else:
-			upfilecontent = ['x']
-			if not is_blank:
-				upfilecontent = query.get('upfile')
-				if len(upfilecontent[0]) > 4000:
-					handler.send_response(302)
-					handler.send_header('Content-type', 'text/html')
-					handler.end_headers()
-					handler.wfile.write("Sorry. Your file cannot exceed 2500 bytes!")
-					return
-			machine_type = query.get('machine')
-			vert_repeat = query.get('vert')
-			convert_to_png = query.get('png', [''])[0] == 'png'
+            generator = PCGenerator(
+                handler,
+                upfilecontent[0],
+                machine_type[0],
+                int(vert_repeat[0]),
+                is_blank,
+                is_solid_fill,
+            )
+            result = generator.generate()
+            filename_template = 'attachment; filename="punchcard-{}.{}"'
 
-			generator = PCGenerator(
-				handler,
-				upfilecontent[0],
-				machine_type[0],
-				int(vert_repeat[0]),
-				is_blank,
-				is_solid_fill)
-			result = generator.generate()
-			filename_template = 'attachment; filename="punchcard-{}.{}"'
+        handler.send_response(200)
 
-		handler.send_response(200)
+        if convert_to_png:
+            result = cairosvg.svg2png(bytestring=result)
+            handler.send_header("Content-type", "image/png")
+            handler.send_header(
+                "Content-Disposition", filename_template.format(int(time.time()), "png")
+            )
+        else:
+            handler.send_header("Content-type", "image/svg+xml")
+            handler.send_header(
+                "Content-Disposition", filename_template.format(int(time.time()), "svg")
+            )
 
-		if convert_to_png:
-			result = cairosvg.svg2png(bytestring=result)
-			handler.send_header('Content-type', 'image/png')
-			handler.send_header('Content-Disposition', filename_template.format(int(time.time()), "png"))
-		else:
-			handler.send_header('Content-type', 'image/svg+xml')
-			handler.send_header('Content-Disposition', filename_template.format(int(time.time()), "svg"))
+        handler.end_headers()
+        handler.wfile.write(result)
 
-		handler.end_headers()
-		handler.wfile.write(result)
+        return
 
-		return
+    except (ValueError, RuntimeError, Exception) as e:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        handler.log_error(
+            "%s", traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
 
-	except (ValueError, RuntimeError, Exception) as e:
-		exc_type, exc_value, exc_traceback = sys.exc_info()
-		handler.log_error("%s", traceback.format_exception(exc_type, exc_value,exc_traceback))
+        handler.send_response(400)
+        handler.send_header("Content-type", "text/html")
+        handler.end_headers()
+        handler.wfile.write(ERR_H1)
+        for i in e.args:
+            handler.wfile.write(i)
+        handler.wfile.write(
+            "<p><em>If you need assistance...</em><br><br>"
+            "* Copy the entire contents of this page to the clipboard (Ctrl-A+Ctrl-C on Windows or Cmd-A+Cmd-C on Mac).<br>"
+            "* Paste from the clibboard (Ctrl-V on Windows or Cmd-V on Mac) into a private message to"
+            " <a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>.<br>"
+            "* Please include the pattern you uploaded to help diagnose the issue.<br>"
+        )
+        handler.wfile.write("<p>Stack trace:<br><br>")
+        stack = traceback.extract_stack()
+        for i in stack:
+            handler.wfile.write(i)
+            handler.wfile.write("<br>")
 
-		handler.send_response(400)
-		handler.send_header('Content-type', 'text/html')
-		handler.end_headers()
-		handler.wfile.write(
-			"<h1>Aw, snap! We seem to have a problem.</h1><p>")
-		for i in e.args:
-			handler.wfile.write(i)
-		handler.wfile.write(
-			"<p><em>If you need assistance...</em><br><br>"
-			"* Copy the entire contents of this page to the clipboard (Ctrl-A+Ctrl-C on Windows or Cmd-A+Cmd-C on Mac).<br>"
-			"* Paste from the clibboard (Ctrl-V on Windows or Cmd-V on Mac) into a private message to"
-			" <a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>.<br>"
-			"* Please include the pattern you uploaded to help diagnose the issue.<br>")
-		handler.wfile.write("<p>Stack trace:<br><br>")
-		stack = traceback.extract_stack()
-		for i in stack:
-			handler.wfile.write(
-				i)
-			handler.wfile.write('<br>')
 
 def calculator_head(handler, logger):
+    try:
+        handler.send_response(200)
+        handler.send_header("Content-type", "text/html")
+        handler.end_headers()
 
-	try:
-		handler.send_response(200)
-		handler.send_header('Content-type', 'text/html')
-		handler.end_headers()
+        return
 
-		return
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        handler.log_error(
+            "%s", traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
 
-	except Exception:
-		exc_type, exc_value, exc_traceback = sys.exc_info()
-		handler.log_error("%s", traceback.format_exception(exc_type, exc_value,exc_traceback))
+        handler.wfile.write(ERR_H1)
+        handler.wfile.write(
+            repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        )
+        handler.wfile.write(ERR_MESSAGE)
 
-		handler.wfile.write(
-			"<h1>Aw, snap! We seem to have a problem.</h1><p><b>")
-		handler.wfile.write(
-			repr(traceback.format_exception(exc_type, exc_value,exc_traceback)))
-		handler.wfile.write(
-			"</b><p>Please report this error via private message to "
-			"<a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>. "
-			"It will be helpful if you include the pattern you uploaded to help me "
-			"diagnose the issue.")
 
 def calculator_get(handler, logger):
+    f = open(
+        "{}/../templates/{}".format(
+            os.path.dirname(os.path.realpath(__file__)), "calculator.html"
+        )
+    )
 
-	f = open("{}/../templates/{}".format(
-		os.path.dirname(os.path.realpath(__file__)),
-		"calculator.html"))
+    try:
+        handler.send_response(200)
+        handler.send_header("Content-type", "text/html")
+        handler.end_headers()
+        handler.wfile.write(f.read())
 
-	try:
-		handler.send_response(200)
-		handler.send_header('Content-type', 'text/html')
-		handler.end_headers()
-		handler.wfile.write(f.read())
+        return
 
-		return
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        handler.log_error(
+            "%s", traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
 
-	except Exception:
-		exc_type, exc_value, exc_traceback = sys.exc_info()
-		handler.log_error("%s", traceback.format_exception(exc_type, exc_value,exc_traceback))
+        handler.wfile.write(ERR_H1)
+        handler.wfile.write(
+            repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        )
+        handler.wfile.write(ERR_MESSAGE)
 
-		handler.wfile.write(
-			"<h1>Aw, snap! We seem to have a problem.</h1><p><b>")
-		handler.wfile.write(
-			repr(traceback.format_exception(exc_type, exc_value,exc_traceback)))
-		handler.wfile.write(
-			"</b><p>Please report this error via private message to "
-			"<a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>. "
-			"It will be helpful if you include the pattern you uploaded to help me "
-			"diagnose the issue.")
+    finally:
+        f.close()
 
-	finally:
-		f.close()
 
 def index_head(handler, logger):
-	try:
-		handler.send_response(200)
-		handler.send_header('Content-type', 'text/html')
-		handler.send_header('Content-Security-Policy', "frame-ancestors 'self' *.theotherbell.com")
-		handler.end_headers()
+    try:
+        handler.send_response(200)
+        handler.send_header("Content-type", "text/html")
+        handler.send_header(
+            "Content-Security-Policy", "frame-ancestors 'self' *.theotherbell.com"
+        )
+        handler.end_headers()
 
-		return
+        return
 
-	except Exception:
-		exc_type, exc_value, exc_traceback = sys.exc_info()
-		handler.log_error("%s", traceback.format_exception(exc_type, exc_value,exc_traceback))
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        handler.log_error(
+            "%s", traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
 
-		handler.wfile.write(
-			"<h1>Aw, snap! We seem to have a problem.</h1><p><b>")
-		handler.wfile.write(
-			repr(traceback.format_exception(exc_type, exc_value,exc_traceback)))
-		handler.wfile.write(
-			"</b><p>Please report this error via private message to "
-			"<a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>. "
-			"It will be helpful if you include the pattern you uploaded to help me "
-			"diagnose the issue.")
+        handler.wfile.write(ERR_H1)
+        handler.wfile.write(
+            repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        )
+        handler.wfile.write(ERR_MESSAGE)
+
 
 def index_get(handler, logger):
-	f = open("{}/../templates/{}".format(
-		os.path.dirname(os.path.realpath(__file__)),
-		"index.html"))
+    f = open(
+        "{}/../templates/{}".format(
+            os.path.dirname(os.path.realpath(__file__)), "index.html"
+        )
+    )
 
-	try:
-		handler.send_response(200)
-		handler.send_header('Content-type', 'text/html')
-		handler.send_header('Content-Security-Policy', "frame-ancestors 'self' *.theotherbell.com")
-		handler.end_headers()
-		handler.wfile.write(f.read())
+    try:
+        handler.send_response(200)
+        handler.send_header("Content-type", "text/html")
+        handler.send_header(
+            "Content-Security-Policy", "frame-ancestors 'self' *.theotherbell.com"
+        )
+        handler.end_headers()
+        handler.wfile.write(f.read())
 
-		return
+        return
 
-	except Exception:
-		exc_type, exc_value, exc_traceback = sys.exc_info()
-		handler.log_error("%s", traceback.format_exception(exc_type, exc_value,exc_traceback))
+    except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        handler.log_error(
+            "%s", traceback.format_exception(exc_type, exc_value, exc_traceback)
+        )
 
-		handler.wfile.write(
-			"<h1>Aw, snap! We seem to have a problem.</h1><p><b>")
-		handler.wfile.write(
-			repr(traceback.format_exception(exc_type, exc_value,exc_traceback)))
-		handler.wfile.write(
-			"</b><p>Please report this error via private message to "
-			"<a href='http://www.ravelry.com/people/beebell'>beebell on Ravelry</a>. "
-			"It will be helpful if you include the pattern you uploaded to help me "
-			"diagnose the issue.")
+        handler.wfile.write("<h1>Aw, snap! We seem to have a problem.</h1><p><b>")
+        handler.wfile.write(
+            repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        )
+        handler.wfile.write(ERR_MESSAGE)
 
-	finally:
-		f.close()
+    finally:
+        f.close()
