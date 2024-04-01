@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "knittingtools"
+version = "0.2.0"
+description = "kittingtools-py3"
+authors = ["Camille Teicheira <cteicheira@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.110.0"
+pydantic = "^2.6.4"
+CairoSVG = "^2.7.1"
+svgwrite = "^1.4.3"
+uvicorn = "^0.29.0"
+python-multipart = "^0.0.9"
+loguru = "^0.7.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
